@@ -33,7 +33,11 @@ install -m 644 /tmp/lspa/logship-print-agent.service /lib/systemd/system/
 install -m 644 /tmp/lspa/logship-print-support.service /lib/systemd/system/
 [ -f /etc/logship-print-agent/agent.env ] || install -m 600 /tmp/lspa/agent.env.example /etc/logship-print-agent/agent.env
 [ -f /etc/logship-print-agent/support.env ] || install -m 600 /tmp/lspa/support.env.example /etc/logship-print-agent/support.env
-systemctl enable --now cups >/dev/null
+# same limits as ansible/appliance.yml (Debian default MaxJobs 500 rejects big bursts with "Too many active jobs")
+for kv in "MaxJobs 5000" "MaxJobsPerPrinter 2000" "PreserveJobHistory 1d" "PreserveJobFiles No"; do
+  k=${kv%% *}; grep -qE "^$k " /etc/cups/cupsd.conf && sed -i "s/^$k .*/$kv/" /etc/cups/cupsd.conf || echo "$kv" >> /etc/cups/cupsd.conf
+done
+systemctl enable cups >/dev/null; systemctl restart cups
 if [ "$WITH_PDF" = "--with-pdf-printers" ]; then
   PPD=$(ls /usr/share/ppd/cups-pdf/*.ppd 2>/dev/null | head -1 || true)
   [ -n "$PPD" ] || PPD=$(find / -name 'CUPS-PDF*.ppd' 2>/dev/null | head -1)

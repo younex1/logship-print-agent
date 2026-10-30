@@ -87,7 +87,20 @@ class QueueWorker {
       const buf = await file
       await writeFile(target, buf)
       const tokens = tokenizeOptions(job.options)
-      const r = await submit(this.queue, tokens, target)
+      // Backpressure: never keep more than maxActivePerQueue jobs open in CUPS for this queue —
+      // a burst of 800 labels is fed to the printer in slices, order preserved, CUPS limits never hit.
+      let waited = 0
+      while (tracker.outstandingFor(this.queue) >= cfg.maxActivePerQueue) {
+        if (waited === 0) log.info(`${this.queue}: ${tracker.outstandingFor(this.queue)} jobs open in CUPS — waiting before job ${job.id}`)
+        await sleep(500); waited += 500
+      }
+      let r = await submit(this.queue, tokens, target)
+      // CUPS "Too many active jobs" / busy is transient: wait for completions and retry (up to 30 min)
+      for (let attempt = 0; !r.ok && /too many active jobs|server-error-busy|temporarily/i.test(r.stderr || '') && attempt < 360; attempt++) {
+        if (attempt === 0) log.warn(`${this.queue}: CUPS busy ("${(r.stderr || '').trim()}") — retrying job ${job.id} until the queue drains`)
+        await sleep(5000)
+        r = await submit(this.queue, tokens, target)
+      }
       if (!r.ok) {
         const err = (r.stderr || r.stdout || 'lp failed').trim()
         log.warn(`job ${job.id} → ${this.queue}: lp FAILED: ${err}`)
@@ -115,15 +128,25 @@ class CompletionTracker {
   private tracked = new Map<number, { cupsJobId: string; queue: string; file: string; since: number; job: AgentJob; missingSince?: number }>()
   private ack: (a: AckMsg) => void
   private state: AgentState
-  constructor(cfg: AgentConfig, ack: (a: AckMsg) => void, state: AgentState) {
+  private ledger: Ledger
+  constructor(cfg: AgentConfig, ack: (a: AckMsg) => void, state: AgentState, ledger: Ledger) {
     this.ack = ack
     this.state = state
+    this.ledger = ledger
+    // Survive restarts: everything the ledger still has open goes straight back under observation.
+    for (const { jobId, entry } of ledger.open()) {
+      if (!entry.cupsJobId) { ledger.finish(jobId); continue }
+      const job = { id: jobId, queue: entry.queue, fileName: path.basename(entry.file || ''), batchId: null, options: '', fileSize: 0, source: '', createdAt: '', attempt: 1, content: null, fileUrl: null }
+      this.tracked.set(jobId, { cupsJobId: entry.cupsJobId, queue: entry.queue, file: entry.file || '', since: entry.ts, job })
+    }
+    if (this.tracked.size) log.info(`restored ${this.tracked.size} spooled job(s) from the ledger for completion tracking`)
     setInterval(() => this.tick().catch(e => log.warn('completion tick failed:', e?.message || e)), cfg.completionPollMs).unref()
   }
   track(jobId: number, cupsJobId: string, queue: string, file: string, job: AgentJob) {
     this.tracked.set(jobId, { cupsJobId, queue, file, since: Date.now(), job })
   }
   get outstanding() { return this.tracked.size }
+  outstandingFor(queue: string) { let n = 0; for (const t of this.tracked.values()) if (t.queue === queue) n++; return n }
   private async tick() {
     if (!this.tracked.size) return
     const [pending, completed] = await Promise.all([pendingJobIds(), completedJobIds()])
@@ -131,18 +154,21 @@ class CompletionTracker {
       if (pending.has(t.cupsJobId)) { t.missingSince = undefined; continue }
       if (completed.has(t.cupsJobId)) {
         this.tracked.delete(jobId)
+        this.ledger.finish(jobId)
         this.ack({ id: jobId, status: 'completed', cupsJobId: t.cupsJobId })
         this.state.recent(t.job, 'completed')
-        unlink(t.file).catch(() => {})
+        if (t.file) unlink(t.file).catch(() => {})
         continue
       }
       // neither pending nor in the completed history: aborted/cancelled on the device (grace 10 s)
       t.missingSince = t.missingSince || Date.now()
       if (Date.now() - t.missingSince > 10_000) {
         this.tracked.delete(jobId)
+        this.ledger.finish(jobId)
         const err = 'CUPS job vanished (cancelled or aborted on the device — printer offline / paper out?)'
         this.ack({ id: jobId, status: 'failed', cupsJobId: t.cupsJobId, error: err })
         this.state.recent(t.job, 'failed', err)
+        if (t.file) unlink(t.file).catch(() => {})
       }
     }
   }
@@ -192,7 +218,7 @@ export const runService = async (cfg: AgentConfig) => {
   const ledger = new Ledger(cfg.stateDir)
   const acks = new AckBatcher(api)
   const ack = (a: AckMsg) => acks.push(a)
-  const tracker = new CompletionTracker(cfg, ack, state)
+  const tracker = new CompletionTracker(cfg, ack, state, ledger)
   const ctx: Ctx = { cfg, api, ledger, dl: new Downloader(api, 4), tracker, state, ack }
   const workers = new Map<string, QueueWorker>()
   const worker = (q: string) => { let w = workers.get(q); if (!w) { w = new QueueWorker(q, ctx); workers.set(q, w) } return w }

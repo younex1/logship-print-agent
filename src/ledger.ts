@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs'
 import path from 'node:path'
 
-interface Entry { cupsJobId: string | null; queue: string; ts: number; file?: string }
+interface Entry { cupsJobId: string | null; queue: string; ts: number; file?: string; done?: boolean }
 
 export class Ledger {
   private file: string
@@ -25,6 +25,17 @@ export class Ledger {
 
   has(jobId: number) { return Object.prototype.hasOwnProperty.call(this.spooled, String(jobId)) }
   get(jobId: number): Entry | undefined { return this.spooled[String(jobId)] }
+
+  /** Jobs handed to lp whose completion has not been confirmed yet (restored after a restart). */
+  open(): { jobId: number; entry: Entry }[] {
+    return Object.entries(this.spooled).filter(([, e]) => !e.done).map(([k, e]) => ({ jobId: Number(k), entry: e }))
+  }
+
+  /** Marks a job as completed/failed on the device — kept (for idempotency) but no longer tracked. */
+  finish(jobId: number) {
+    const e = this.spooled[String(jobId)]
+    if (e && !e.done) { e.done = true; this.dirty = true }
+  }
 
   add(jobId: number, cupsJobId: string | null, queue: string, file?: string) {
     this.spooled[String(jobId)] = { cupsJobId, queue, ts: Date.now(), file }

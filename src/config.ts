@@ -22,6 +22,8 @@ export interface AgentConfig {
   pollMax: number
   heartbeatSeconds: number
   completionPollMs: number
+  /** max jobs the agent keeps open in CUPS per queue before it waits (backpressure) */
+  maxActivePerQueue: number
   setupPort: number
   setupBind: string
   autoProvisionUsb: boolean
@@ -86,6 +88,7 @@ export const loadConfig = (): AgentConfig => {
     pollMax: Math.min(num(get('POLL_MAX'), 50), 100),
     heartbeatSeconds: num(get('HEARTBEAT_SECONDS'), 60),
     completionPollMs: num(get('COMPLETION_POLL_MS'), 2000),
+    maxActivePerQueue: Math.min(num(get('MAX_ACTIVE_PER_QUEUE'), 40), 400),
     setupPort: num(get('SETUP_PORT'), 8080),
     setupBind: get('SETUP_BIND', '0.0.0.0'),
     autoProvisionUsb: bool(get('AUTO_PROVISION_USB'), true),
