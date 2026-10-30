@@ -125,7 +125,7 @@ class QueueWorker {
 }
 
 class CompletionTracker {
-  private tracked = new Map<number, { cupsJobId: string; queue: string; file: string; since: number; job: AgentJob; missingSince?: number }>()
+  private tracked = new Map<number, { cupsJobId: string; queue: string; file: string; since: number; job: AgentJob; missingSince?: number; restored?: boolean }>()
   private ack: (a: AckMsg) => void
   private state: AgentState
   private ledger: Ledger
@@ -137,7 +137,7 @@ class CompletionTracker {
     for (const { jobId, entry } of ledger.open()) {
       if (!entry.cupsJobId) { ledger.finish(jobId); continue }
       const job = { id: jobId, queue: entry.queue, fileName: path.basename(entry.file || ''), batchId: null, options: '', fileSize: 0, source: '', createdAt: '', attempt: 1, content: null, fileUrl: null }
-      this.tracked.set(jobId, { cupsJobId: entry.cupsJobId, queue: entry.queue, file: entry.file || '', since: entry.ts, job })
+      this.tracked.set(jobId, { cupsJobId: entry.cupsJobId, queue: entry.queue, file: entry.file || '', since: entry.ts, job, restored: true })
     }
     if (this.tracked.size) log.info(`restored ${this.tracked.size} spooled job(s) from the ledger for completion tracking`)
     setInterval(() => this.tick().catch(e => log.warn('completion tick failed:', e?.message || e)), cfg.completionPollMs).unref()
@@ -160,14 +160,22 @@ class CompletionTracker {
         if (t.file) unlink(t.file).catch(() => {})
         continue
       }
-      // neither pending nor in the completed history: aborted/cancelled on the device (grace 10 s)
+      // neither pending nor in the completed history
       t.missingSince = t.missingSince || Date.now()
       if (Date.now() - t.missingSince > 10_000) {
         this.tracked.delete(jobId)
         this.ledger.finish(jobId)
-        const err = 'CUPS job vanished (cancelled or aborted on the device — printer offline / paper out?)'
-        this.ack({ id: jobId, status: 'failed', cupsJobId: t.cupsJobId, error: err })
-        this.state.recent(t.job, 'failed', err)
+        if (t.restored) {
+          // restored after a restart: CUPS had the job before and it is gone from the (size-capped)
+          // history → it finished while we were down; CUPS never drops a job silently otherwise
+          this.ack({ id: jobId, status: 'completed', cupsJobId: t.cupsJobId, output: 'completed while the agent was restarting (no longer in CUPS history)' })
+          this.state.recent(t.job, 'completed')
+        } else {
+          // live-tracked job: aborted/cancelled on the device (printer offline / paper out / cancel)
+          const err = 'CUPS job vanished (cancelled or aborted on the device — printer offline / paper out?)'
+          this.ack({ id: jobId, status: 'failed', cupsJobId: t.cupsJobId, error: err })
+          this.state.recent(t.job, 'failed', err)
+        }
         if (t.file) unlink(t.file).catch(() => {})
       }
     }
