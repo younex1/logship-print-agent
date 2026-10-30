@@ -1,0 +1,21 @@
+{
+  "name": "logship-print-agent",
+  "version": "0.1.0",
+  "description": "LogShip Print Agent — prints LogShip ERP jobs on CUPS printers inside a tenant LAN (outbound-only, no VPN)",
+  "type": "module",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node scripts/bundle.mjs",
+    "dev": "node --experimental-strip-types --no-warnings src/cli.ts run",
+    "typecheck": "tsc --noEmit",
+    "package": "bash scripts/build.sh",
+    "test": "node --experimental-strip-types --no-warnings --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0"
+  }
+}

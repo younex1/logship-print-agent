@@ -1,0 +1,11 @@
+/var/log/cups/*_log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+    sharedscripts
+    postrotate
+        systemctl reload cups >/dev/null 2>&1 || true
+    endscript
+}

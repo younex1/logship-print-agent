@@ -1,0 +1,19 @@
+#!/usr/sbin/nft -f
+# LogShip print appliance: inbound only ssh / CUPS / setup page from the LAN; everything outbound.
+flush ruleset
+define LAN = { {{ lan_cidrs | join(', ') }} }
+table inet filter {
+  chain input {
+    type filter hook input priority 0; policy drop;
+    iif lo accept
+    ct state established,related accept
+    ct state invalid drop
+    ip protocol icmp accept
+    ip6 nexthdr icmpv6 accept
+    ip saddr $LAN tcp dport { 22, 631, 8080 } accept
+    ip saddr $LAN udp dport 5353 accept
+    ip6 saddr fe80::/10 udp dport 5353 accept
+  }
+  chain forward { type filter hook forward priority 0; policy drop; }
+  chain output { type filter hook output priority 0; policy accept; }
+}

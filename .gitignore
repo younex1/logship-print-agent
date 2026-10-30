@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+*.deb
+*.log
+.DS_Store
+# local test state
+.state/
+agent.env

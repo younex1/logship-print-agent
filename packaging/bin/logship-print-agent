@@ -1,0 +1,3 @@
+#!/bin/sh
+# CLI wrapper: bundled Node runtime + bundled agent
+exec /opt/logship-print-agent/node /opt/logship-print-agent/agent.mjs "$@"

@@ -1,0 +1,213 @@
+# LogShip Print Appliance — Debian 12 (amd64 mini-PC or Raspberry Pi 5 arm64)
+#
+#   ansible-playbook -i ansible/inventory.ini ansible/appliance.yml
+#
+# Produces the golden box: native CUPS (LAN-only admin), the agent from the LogShip apt repo,
+# unattended security + agent updates with a night reboot window that respects the spool,
+# nftables (inbound only ssh/cups/setup from the LAN), journald/log limits, fstrim, hardware
+# watchdog, smartmontools, avahi (logship-print.local), optional log2ram on the Pi.
+# Afterwards: image the disk once (Clonezilla / dd); every new box = flash + first boot
+# (ansible/files/first-boot.sh regenerates ssh host keys + machine-id) + enrol.
+- hosts: print_appliances
+  become: true
+  vars:
+    apt_repo_url: "https://apt.logship.de"
+    apt_repo_channel: "stable"
+    apt_repo_key_url: "https://apt.logship.de/logship-apt.gpg"
+    hostname: "logship-print"
+    timezone: "Europe/Berlin"
+    cups_admin_user: "logship"
+    cups_admin_password: "{{ lookup('env', 'CUPS_ADMIN_PASSWORD') | default('change-me', true) }}"
+    lan_cidrs: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+    admin_ssh_keys: []            # LogYou support public keys
+    support_key_src: ""           # path to the private key for the reverse tunnel (optional)
+    is_pi: "{{ ansible_architecture == 'aarch64' and 'raspberry' in (ansible_board_name | default('') | lower) }}"
+    reboot_window_start: "03:00"
+
+  tasks:
+    - name: Base packages
+      apt:
+        update_cache: yes
+        name:
+          - cups
+          - cups-client
+          - cups-filters
+          - cups-bsd
+          - printer-driver-zebra
+          - ghostscript
+          - poppler-utils
+          - avahi-daemon
+          - avahi-utils
+          - unattended-upgrades
+          - apt-listchanges
+          - nftables
+          - smartmontools
+          - nvme-cli
+          - autossh
+          - ca-certificates
+          - curl
+          - gnupg
+          - htop
+          - usbutils
+          - watchdog
+        state: present
+
+    - name: Hostname + timezone
+      block:
+        - hostname: { name: "{{ hostname }}" }
+        - lineinfile: { path: /etc/hosts, regexp: '^127\.0\.1\.1', line: "127.0.1.1 {{ hostname }}" }
+        - timezone: { name: "{{ timezone }}" }
+
+    # ── CUPS: LAN admin UI on :631, remote admin, share nothing ───────────────
+    - name: CUPS admin user
+      user:
+        name: "{{ cups_admin_user }}"
+        groups: lpadmin
+        append: yes
+        password: "{{ cups_admin_password | password_hash('sha512') }}"
+        shell: /usr/sbin/nologin
+    - name: cupsd.conf
+      template: { src: templates/cupsd.conf.j2, dest: /etc/cups/cupsd.conf, mode: '0640', group: lp }
+      notify: restart cups
+    - name: cups-files.conf keeps no job files
+      lineinfile:
+        path: /etc/cups/cups-files.conf
+        regexp: '^#?\s*{{ item.key }}'
+        line: "{{ item.key }} {{ item.value }}"
+      loop:
+        - { key: 'LogLevel', value: 'warn' }
+      notify: restart cups
+    - name: CUPS enabled
+      systemd: { name: cups, enabled: yes, state: started }
+
+    # ── LogShip apt repo + agent ───────────────────────────────────────────────
+    - name: LogShip apt signing key
+      get_url: { url: "{{ apt_repo_key_url }}", dest: /etc/apt/keyrings/logship-apt.gpg, mode: '0644' }
+    - name: LogShip apt source
+      copy:
+        dest: /etc/apt/sources.list.d/logship.list
+        content: "deb [signed-by=/etc/apt/keyrings/logship-apt.gpg] {{ apt_repo_url }} {{ apt_repo_channel }} main\n"
+    - name: Install logship-print-agent
+      apt: { name: logship-print-agent, state: latest, update_cache: yes }
+    - name: Support tunnel key
+      copy: { src: "{{ support_key_src }}", dest: /etc/logship-print-agent/support_key, mode: '0600' }
+      when: support_key_src | length > 0
+
+    # ── unattended upgrades: Debian security + LogShip origin, night reboot only when idle ─
+    - name: unattended-upgrades config
+      template: { src: templates/51-logship-unattended.j2, dest: /etc/apt/apt.conf.d/51-logship-unattended, mode: '0644' }
+    - name: Enable periodic upgrades
+      copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+          APT::Periodic::AutocleanInterval "7";
+    - name: Idle-aware night reboot (only when the agent spool is empty)
+      copy: { src: files/logship-reboot-if-idle.sh, dest: /usr/local/sbin/logship-reboot-if-idle, mode: '0755' }
+    - name: Night reboot timer
+      copy:
+        dest: /etc/systemd/system/logship-reboot-if-idle.timer
+        content: |
+          [Unit]
+          Description=Reboot when a kernel/security update requires it and no print jobs are open
+          [Timer]
+          OnCalendar=*-*-* {{ reboot_window_start }}:00
+          RandomizedDelaySec=30m
+          Persistent=false
+          [Install]
+          WantedBy=timers.target
+    - copy:
+        dest: /etc/systemd/system/logship-reboot-if-idle.service
+        content: |
+          [Unit]
+          Description=Reboot if required and idle
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/logship-reboot-if-idle
+    - systemd: { name: logship-reboot-if-idle.timer, enabled: yes, state: started, daemon_reload: yes }
+
+    # ── firewall: inbound only from the LAN ───────────────────────────────────
+    - name: nftables rules
+      template: { src: templates/nftables.conf.j2, dest: /etc/nftables.conf, mode: '0644' }
+      notify: reload nftables
+    - systemd: { name: nftables, enabled: yes, state: started }
+
+    # ── ssh: keys only ────────────────────────────────────────────────────────
+    - name: Admin ssh keys
+      authorized_key: { user: root, key: "{{ item }}" }
+      loop: "{{ admin_ssh_keys }}"
+    - name: sshd hardening
+      copy:
+        dest: /etc/ssh/sshd_config.d/90-logship.conf
+        content: |
+          PasswordAuthentication no
+          PermitRootLogin prohibit-password
+          X11Forwarding no
+      notify: restart sshd
+
+    # ── long-running storage/log hygiene ──────────────────────────────────────
+    - name: journald limits
+      copy:
+        dest: /etc/systemd/journald.conf.d/logship.conf
+        content: |
+          [Journal]
+          SystemMaxUse=200M
+          RuntimeMaxUse=50M
+          MaxRetentionSec=14day
+      notify: restart journald
+    - name: tmpfs for /tmp
+      systemd: { name: tmp.mount, enabled: yes, masked: no }
+      ignore_errors: yes
+    - name: fstrim weekly
+      systemd: { name: fstrim.timer, enabled: yes, state: started }
+    - name: noatime on root
+      replace:
+        path: /etc/fstab
+        regexp: '^(\S+\s+/\s+\S+\s+)(?!.*noatime)(\S+)'
+        replace: '\1noatime,\2'
+    - name: smartd enabled
+      systemd: { name: smartmontools, enabled: yes, state: started }
+      ignore_errors: yes
+    - name: Hardware watchdog (systemd)
+      copy:
+        dest: /etc/systemd/system.conf.d/watchdog.conf
+        content: |
+          [Manager]
+          RuntimeWatchdogSec=30
+          RebootWatchdogSec=10min
+    - name: log2ram on the Pi (SD-card wear)
+      block:
+        - get_url: { url: "https://azlux.fr/repo.gpg", dest: /etc/apt/keyrings/azlux.gpg, mode: '0644' }
+        - copy: { dest: /etc/apt/sources.list.d/azlux.list, content: "deb [signed-by=/etc/apt/keyrings/azlux.gpg] http://packages.azlux.fr/debian/ bookworm main\n" }
+        - apt: { name: log2ram, state: present, update_cache: yes }
+      when: is_pi | bool
+
+    # ── first boot of a cloned image: new ssh host keys + machine-id ──────────
+    - copy: { src: files/first-boot.sh, dest: /usr/local/sbin/logship-first-boot, mode: '0755' }
+    - copy:
+        dest: /etc/systemd/system/logship-first-boot.service
+        content: |
+          [Unit]
+          Description=LogShip appliance first boot (regenerate identity after cloning)
+          ConditionPathExists=/var/lib/logship-print-agent/.first-boot
+          Before=ssh.service logship-print-agent.service
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/logship-first-boot
+          [Install]
+          WantedBy=multi-user.target
+    - systemd: { name: logship-first-boot.service, enabled: yes, daemon_reload: yes }
+
+    - name: Agent running
+      systemd: { name: logship-print-agent, enabled: yes, state: started }
+
+  handlers:
+    - name: restart cups
+      systemd: { name: cups, state: restarted }
+    - name: reload nftables
+      systemd: { name: nftables, state: reloaded }
+    - name: restart sshd
+      systemd: { name: ssh, state: restarted }
+    - name: restart journald
+      systemd: { name: systemd-journald, state: restarted }

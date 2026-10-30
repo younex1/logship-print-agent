@@ -1,0 +1,27 @@
+[Unit]
+Description=LogShip Print Agent
+Documentation=https://www.logship.de
+After=network-online.target cups.service
+Wants=network-online.target cups.service
+
+[Service]
+Type=simple
+# root: lp/lpadmin/apt/systemctl for the update + support commands
+User=root
+EnvironmentFile=-/etc/logship-print-agent/agent.env
+ExecStart=/opt/logship-print-agent/node /opt/logship-print-agent/agent.mjs run
+Restart=always
+RestartSec=3
+WatchdogSec=0
+# the unattended-upgrades reboot hook checks this before a night reboot
+ExecStartPost=/bin/sh -c 'mkdir -p /run/logship-print-agent'
+KillSignal=SIGTERM
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=logship-print-agent
+NoNewPrivileges=false
+ProtectSystem=false
+
+[Install]
+WantedBy=multi-user.target

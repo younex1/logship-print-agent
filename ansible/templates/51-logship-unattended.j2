@@ -1,0 +1,14 @@
+// Debian security updates + the LogShip apt repo (agent updates) — applied nightly.
+// Reboots are NOT done by unattended-upgrades itself; logship-reboot-if-idle.timer reboots in the
+// night window only when /run/reboot-required exists and the agent spool is empty.
+Unattended-Upgrade::Origins-Pattern {
+    "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+    "origin=Debian,codename=${distro_codename},label=Debian";
+    "origin=LogShip";
+};
+Unattended-Upgrade::Package-Blacklist {
+};
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+Unattended-Upgrade::Automatic-Reboot "false";
+Unattended-Upgrade::SyslogEnable "true";

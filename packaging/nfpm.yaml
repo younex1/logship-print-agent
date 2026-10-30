@@ -1,0 +1,56 @@
+# nfpm package definition — see scripts/build.sh (env: ARCH, VERSION, NODE_BIN)
+name: logship-print-agent
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+section: net
+priority: optional
+maintainer: LogYou GmbH <info@logyou.de>
+description: |
+  LogShip Print Agent — prints LogShip ERP jobs on CUPS printers inside the local network.
+  Outbound-only HTTPS long-poll to the LogShip instance; no VPN, no inbound ports.
+vendor: LogYou GmbH
+homepage: https://www.logship.de
+license: Proprietary
+depends:
+  - cups
+  - cups-client
+  - cups-filters
+  - ghostscript
+  - poppler-utils
+  - ca-certificates
+recommends:
+  - printer-driver-zebra
+  - smartmontools
+  - avahi-daemon
+  - autossh
+contents:
+  - src: dist/agent.mjs
+    dst: /opt/logship-print-agent/agent.mjs
+    file_info: { mode: 0755 }
+  - src: ${NODE_BIN}
+    dst: /opt/logship-print-agent/node
+    file_info: { mode: 0755 }
+  - src: packaging/bin/logship-print-agent
+    dst: /usr/bin/logship-print-agent
+    file_info: { mode: 0755 }
+  - src: packaging/logship-print-agent.service
+    dst: /lib/systemd/system/logship-print-agent.service
+  - src: packaging/logship-print-support.service
+    dst: /lib/systemd/system/logship-print-support.service
+  - src: packaging/agent.env.example
+    dst: /etc/logship-print-agent/agent.env
+    type: config|noreplace
+    file_info: { mode: 0600 }
+  - src: packaging/support.env.example
+    dst: /etc/logship-print-agent/support.env
+    type: config|noreplace
+    file_info: { mode: 0600 }
+  - src: packaging/logship-print-agent.logrotate
+    dst: /etc/logrotate.d/logship-print-agent
+  - dst: /var/lib/logship-print-agent
+    type: dir
+    file_info: { mode: 0750 }
+scripts:
+  postinstall: packaging/postinstall.sh
+  preremove: packaging/preremove.sh

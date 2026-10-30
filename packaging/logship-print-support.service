@@ -1,0 +1,15 @@
+[Unit]
+Description=LogShip remote support tunnel (reverse SSH, started on demand from LogShip)
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/logship-print-agent/support.env
+# -R <REMOTE_PORT>:localhost:22 on the LogYou jump host; key-only, no shell on the jump host
+ExecStart=/usr/bin/autossh -M 0 -N -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new -i ${SUPPORT_KEY} -p ${SUPPORT_PORT} -R ${REMOTE_PORT}:localhost:22 ${SUPPORT_USER}@${SUPPORT_HOST}
+Restart=on-failure
+RestartSec=10
+
+[Install]
+# not enabled: only started by the agent's 'support-tunnel-on' command (auto-stop after 8 h)
+WantedBy=
