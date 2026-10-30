@@ -145,6 +145,18 @@ class CompletionTracker {
   track(jobId: number, cupsJobId: string, queue: string, file: string, job: AgentJob) {
     this.tracked.set(jobId, { cupsJobId, queue, file, since: Date.now(), job })
   }
+  /** Server-side 'spooled' jobs without completion (handed over on a fresh start): observe them like restored ones. */
+  reconcile(items: { id: number; cupsJobId: string | null; queue: string }[]) {
+    let n = 0
+    for (const it of items) {
+      if (!it.cupsJobId || this.tracked.has(it.id)) continue
+      this.ledger.adopt(it.id, it.cupsJobId, it.queue)
+      const job = { id: it.id, queue: it.queue, fileName: '', batchId: null, options: '', fileSize: 0, source: '', createdAt: '', attempt: 1, content: null, fileUrl: null }
+      this.tracked.set(it.id, { cupsJobId: it.cupsJobId, queue: it.queue, file: '', since: Date.now(), job, restored: true })
+      n++
+    }
+    if (n) log.info(`reconciling ${n} job(s) the instance still had as spooled`)
+  }
   get outstanding() { return this.tracked.size }
   outstandingFor(queue: string) { let n = 0; for (const t of this.tracked.values()) if (t.queue === queue) n++; return n }
   private async tick() {
@@ -257,6 +269,7 @@ export const runService = async (cfg: AgentConfig) => {
     try {
       const res = await api.next(cfg.pollWait, cfg.pollMax, fresh)
       fresh = false
+      if (res.reconcile?.length) tracker.reconcile(res.reconcile)
       state.connected = true
       state.lastPoll = Date.now()
       state.lastError = ''

@@ -65,7 +65,7 @@ export class Api {
   }
 
   next(wait: number, max: number, fresh = false) {
-    return this.req<{ jobs: AgentJob[]; commands: AgentCommandMsg[] }>('GET', `/api/print-agent/jobs/next?wait=${wait}&max=${max}${fresh ? '&fresh=1' : ''}`, undefined, { timeoutMs: wait * 1000 + 15_000 })
+    return this.req<{ jobs: AgentJob[]; commands: AgentCommandMsg[]; reconcile?: { id: number; cupsJobId: string | null; queue: string }[] }>('GET', `/api/print-agent/jobs/next?wait=${wait}&max=${max}${fresh ? '&fresh=1' : ''}`, undefined, { timeoutMs: wait * 1000 + 15_000 })
   }
 
   file(id: number): Promise<Buffer> {

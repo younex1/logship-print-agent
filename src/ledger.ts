@@ -44,6 +44,15 @@ export class Ledger {
       keys.sort((a, b) => this.spooled[a].ts - this.spooled[b].ts).slice(0, keys.length - this.cap).forEach(k => { delete this.spooled[k] })
     }
     this.dirty = true
+    this.flush() // synchronous: a crash right after `lp` must not lose the entry (~0.2 ms per job)
+  }
+
+  /** Adopts a job the server still has as 'spooled' (completion never confirmed) if we do not know it. */
+  adopt(jobId: number, cupsJobId: string | null, queue: string): boolean {
+    if (this.has(jobId)) return false
+    this.spooled[String(jobId)] = { cupsJobId, queue, ts: Date.now() }
+    this.dirty = true
+    return true
   }
 
   flush() {
