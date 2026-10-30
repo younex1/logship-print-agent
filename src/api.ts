@@ -64,8 +64,8 @@ export class Api {
     return this.req<{ ok: boolean; serverTime: string; queued: number; commands: AgentCommandMsg[]; supportUntil: string | null }>('POST', '/api/print-agent/heartbeat', body)
   }
 
-  next(wait: number, max: number) {
-    return this.req<{ jobs: AgentJob[]; commands: AgentCommandMsg[] }>('GET', `/api/print-agent/jobs/next?wait=${wait}&max=${max}`, undefined, { timeoutMs: wait * 1000 + 15_000 })
+  next(wait: number, max: number, fresh = false) {
+    return this.req<{ jobs: AgentJob[]; commands: AgentCommandMsg[] }>('GET', `/api/print-agent/jobs/next?wait=${wait}&max=${max}${fresh ? '&fresh=1' : ''}`, undefined, { timeoutMs: wait * 1000 + 15_000 })
   }
 
   file(id: number): Promise<Buffer> {

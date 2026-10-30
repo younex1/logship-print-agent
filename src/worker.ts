@@ -252,9 +252,11 @@ export const runService = async (cfg: AgentConfig) => {
 
   log.info(`LogShip Print Agent "${cfg.name}" connected to ${cfg.url} — long-poll ${cfg.pollWait}s / ${cfg.pollMax} jobs, heartbeat ${cfg.heartbeatSeconds}s`)
   let backoff = 1000
+  let fresh = true // first poll after start: the server hands back jobs we had claimed before the restart
   for (;;) {
     try {
-      const res = await api.next(cfg.pollWait, cfg.pollMax)
+      const res = await api.next(cfg.pollWait, cfg.pollMax, fresh)
+      fresh = false
       state.connected = true
       state.lastPoll = Date.now()
       state.lastError = ''
