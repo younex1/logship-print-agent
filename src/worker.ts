@@ -197,7 +197,8 @@ export const runService = async (cfg: AgentConfig) => {
   const workers = new Map<string, QueueWorker>()
   const worker = (q: string) => { let w = workers.get(q); if (!w) { w = new QueueWorker(q, ctx); workers.set(q, w) } return w }
 
-  // heartbeat loop
+  // heartbeat loop (also pushed immediately after a remote printer change)
+  const cmdCtx = { refreshInventory: async () => { await heartbeat() } }
   const heartbeat = async () => {
     try {
       const body = await buildHeartbeat(cfg)
@@ -205,7 +206,7 @@ export const runService = async (cfg: AgentConfig) => {
       const res = await api.heartbeat(body)
       state.lastHeartbeat = Date.now()
       state.queuedOnServer = res.queued
-      for (const c of res.commands || []) handleCommand(cfg, api, c)
+      for (const c of res.commands || []) handleCommand(cfg, api, c, cmdCtx)
     } catch (e: any) {
       state.lastError = e?.message || String(e)
       log.warn('heartbeat failed:', state.lastError)
@@ -224,7 +225,7 @@ export const runService = async (cfg: AgentConfig) => {
       state.lastPoll = Date.now()
       state.lastError = ''
       backoff = 1000
-      for (const c of res.commands || []) handleCommand(cfg, api, c)
+      for (const c of res.commands || []) handleCommand(cfg, api, c, cmdCtx)
       for (const j of res.jobs || []) worker(j.queue).push(j)
     } catch (e: any) {
       state.connected = false
