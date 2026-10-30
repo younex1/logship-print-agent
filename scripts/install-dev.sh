@@ -14,7 +14,7 @@ SSH="ssh -o StrictHostKeyChecking=accept-new ${SSH_OPTS:-} $TARGET"
 SUDO=""; [ "${TARGET%%@*}" != "root" ] && [ "${TARGET%%@*}" != "$TARGET" ] && SUDO="sudo -n"
 $SSH 'mkdir -p /tmp/lspa'
 scp -q -o StrictHostKeyChecking=accept-new ${SSH_OPTS:-} dist/agent.mjs packaging/bin/logship-print-agent packaging/logship-print-agent.service packaging/logship-print-support.service packaging/agent.env.example packaging/support.env.example packaging/postinstall.sh "$TARGET:/tmp/lspa/"
-$SSH $SUDO bash -s "$NODE_VERSION" "$WITH_PDF" <<'REMOTE'
+$SSH $SUDO bash -s "$NODE_VERSION" "${WITH_PDF:-none}" <<'REMOTE'
 set -euo pipefail
 NODE_VERSION="$1"; WITH_PDF="$2"
 export DEBIAN_FRONTEND=noninteractive
