@@ -49,7 +49,7 @@ fi
 # local CUPS admin for the LogShip relay / tunnel use (lpadmin group, no shell); password kept in agent.env (600)
 if ! grep -q '^CUPS_ADMIN_USER=' /etc/logship-print-agent/agent.env 2>/dev/null; then
   id logship-cups >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin -G lpadmin logship-cups
-  PW=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)
+  PW=$(head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-24)   # no early-closing pipe (set -o pipefail)
   echo "logship-cups:$PW" | chpasswd
   printf 'CUPS_ADMIN_USER=logship-cups\nCUPS_ADMIN_PASS=%s\n' "$PW" >> /etc/logship-print-agent/agent.env
 fi
