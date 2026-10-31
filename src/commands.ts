@@ -29,6 +29,33 @@ const DRIVER_FILTER = /everywhere|zebra|dymo|brother|tsc|godex|citizen|sato|bixo
 
 export interface CommandCtx { refreshInventory?: () => Promise<void> }
 
+/**
+ * HTTP relay to the local CUPS web interface: LogShip forwards the admin's browser request
+ * (method, path, a few headers, body) and renders the response — the CUPS GUI appears inside
+ * LogShip without any inbound connectivity. Admin pages are signed in with the local lpadmin
+ * credential from agent.env, so no CUPS password ever leaves the box.
+ */
+const relayHttp = async (cfg: AgentConfig, p: any) => {
+  const method = String(p?.method || 'GET').toUpperCase()
+  if (!/^(GET|POST|HEAD)$/.test(method)) throw new Error('method not allowed')
+  const path = String(p?.path || '/')
+  if (!path.startsWith('/') || path.startsWith('//') || /[\s]/.test(path)) throw new Error('invalid path')
+  const headers: Record<string, string> = { 'User-Agent': 'logship-print-agent-relay' }
+  for (const k of ['content-type', 'accept', 'cookie', 'accept-language']) {
+    const v = p?.headers?.[k]
+    if (v) headers[k] = String(v).slice(0, 4000)
+  }
+  if (cfg.cupsAdminUser && cfg.cupsAdminPass) headers.Authorization = 'Basic ' + Buffer.from(`${cfg.cupsAdminUser}:${cfg.cupsAdminPass}`).toString('base64')
+  const body = p?.bodyBase64 ? Buffer.from(String(p.bodyBase64), 'base64') : undefined
+  const res = await fetch('http://127.0.0.1:631' + path, { method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(20_000) })
+  const buf = Buffer.from(await res.arrayBuffer())
+  if (buf.length > 5 * 1024 * 1024) throw new Error('response too large')
+  const outHeaders: Record<string, string> = {}
+  for (const k of ['content-type', 'location', 'cache-control', 'last-modified', 'etag']) { const v = res.headers.get(k); if (v) outHeaders[k] = v }
+  const setCookies: string[] = typeof (res.headers as any).getSetCookie === 'function' ? (res.headers as any).getSetCookie() : []
+  return JSON.stringify({ status: res.status, headers: outHeaders, setCookies, bodyBase64: buf.toString('base64') })
+}
+
 const discoverPrinters = async () => {
   const [devs, drvs, ipp] = await Promise.all([run('lpinfo', ['-l', '-v'], 40_000), run('lpinfo', ['-m'], 40_000), run('ippfind', ['-T', '4'], 15_000)])
   // `lpinfo -l -v` → blocks: "Device: uri = … / class = … / info = … / make-and-model = … / device-id = …"
@@ -217,6 +244,10 @@ export const handleCommand = async (cfg: AgentConfig, api: Api, c: AgentCommandM
       }
       case 'list-queues': {
         result = JSON.stringify(await listQueues(cfg.ppdDir))
+        break
+      }
+      case 'http': {
+        result = await relayHttp(cfg, c.payload)
         break
       }
       default:

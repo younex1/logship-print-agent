@@ -46,6 +46,13 @@ if [ "$WITH_PDF" = "--with-pdf-printers" ]; then
   lpoptions -p commission-a4-1 -o media=A4 >/dev/null || true
   echo "cups-pdf queues: $(lpstat -p | awk '{print $2}' | tr '\n' ' ') → output in /var/spool/cups-pdf/<user>/"
 fi
+# local CUPS admin for the LogShip relay / tunnel use (lpadmin group, no shell); password kept in agent.env (600)
+if ! grep -q '^CUPS_ADMIN_USER=' /etc/logship-print-agent/agent.env 2>/dev/null; then
+  id logship-cups >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin -G lpadmin logship-cups
+  PW=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24)
+  echo "logship-cups:$PW" | chpasswd
+  printf 'CUPS_ADMIN_USER=logship-cups\nCUPS_ADMIN_PASS=%s\n' "$PW" >> /etc/logship-print-agent/agent.env
+fi
 bash /tmp/lspa/postinstall.sh
 sleep 1
 systemctl is-active logship-print-agent && logship-print-agent version

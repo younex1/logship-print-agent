@@ -78,7 +78,8 @@ export class Api {
   }
 
   commandResult(id: number, ok: boolean, result: string) {
-    return this.req('POST', `/api/print-agent/commands/${id}/result`, { ok, result: String(result || '').slice(0, 20000) })
+    // text results are kept short; an HTTP relay result (CUPS page, image) may be several MB
+    return this.req('POST', `/api/print-agent/commands/${id}/result`, { ok, result: String(result || '').slice(0, 8 * 1024 * 1024) }, { timeoutMs: 60_000 })
   }
 
   uploadBackup(tar: Buffer) {

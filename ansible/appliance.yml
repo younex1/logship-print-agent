@@ -89,6 +89,14 @@
         content: "deb [signed-by=/etc/apt/keyrings/logship-apt.gpg] {{ apt_repo_url }} {{ apt_repo_channel }} main\n"
     - name: Install logship-print-agent
       apt: { name: logship-print-agent, state: latest, update_cache: yes }
+    - name: CUPS admin credential for the LogShip relay in agent.env
+      blockinfile:
+        path: /etc/logship-print-agent/agent.env
+        marker: "# {mark} ANSIBLE cups-admin"
+        block: |
+          CUPS_ADMIN_USER={{ cups_admin_user }}
+          CUPS_ADMIN_PASS={{ cups_admin_password }}
+      notify: restart agent
     - name: Support tunnel key
       copy: { src: "{{ support_key_src }}", dest: /etc/logship-print-agent/support_key, mode: '0600' }
       when: support_key_src | length > 0
@@ -203,6 +211,8 @@
       systemd: { name: logship-print-agent, enabled: yes, state: started }
 
   handlers:
+    - name: restart agent
+      systemd: { name: logship-print-agent, state: restarted }
     - name: restart cups
       systemd: { name: cups, state: restarted }
     - name: reload nftables

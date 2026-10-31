@@ -33,6 +33,9 @@ export interface AgentConfig {
   ppdDir: string
   backupEnabled: boolean
   supportUnit: string
+  /** local CUPS admin (lpadmin group) the HTTP relay signs in with — created by the installer */
+  cupsAdminUser: string
+  cupsAdminPass: string
 }
 
 export const parseEnvFile = (text: string): Record<string, string> => {
@@ -96,7 +99,9 @@ export const loadConfig = (): AgentConfig => {
     autoProvisionDriver: get('AUTO_PROVISION_DRIVER', 'drv:///sample.drv/zebra.ppd'),
     ppdDir: get('CUPS_PPD_DIR', '/etc/cups/ppd'),
     backupEnabled: bool(get('BACKUP_ENABLED'), true),
-    supportUnit: get('SUPPORT_UNIT', 'logship-print-support.service')
+    supportUnit: get('SUPPORT_UNIT', 'logship-print-support.service'),
+    cupsAdminUser: get('CUPS_ADMIN_USER', ''),
+    cupsAdminPass: get('CUPS_ADMIN_PASS', '')
   }
   for (const d of [cfg.stateDir, cfg.spoolDir]) { try { if (!existsSync(d)) mkdirSync(d, { recursive: true }) } catch { /* read-only dev run */ } }
   return cfg
