@@ -24,11 +24,12 @@ LogShip printer uses which box is configured per printer in LogShip (Settings �
 
 ## Quick start (device)
 ```bash
-# Debian 12 box prepared with ansible/appliance.yml (or: apt install ./logship-print-agent_*.deb)
-sudo logship-print-agent enroll --url https://erp.example.de --code LSPA-XXXX-XXXX-XXXX --name "Lager Halle 2"
-sudo systemctl restart logship-print-agent
-logship-print-agent status
+git clone https://github.com/younex1/logship-print-agent.git && cd logship-print-agent
+sudo ./install/install.sh --url https://erp.example.de --code LSPA-XXXX-XXXX-XXXX --name "Lager Halle 2"
 ```
+Installs CUPS + the agent package from `install/` (prebuilt, checksum-verified), enrols, verifies.
+Requirements, device recommendations and the manual steps: **`install/README.md`**. Boxes shipped by
+LogYou are additionally hardened with `ansible/appliance.yml` (see `docs/HARDWARE.md`).
 Or open `http://logship-print.local:8080` and paste URL + code there. The code comes from LogShip →
 Settings → Printers → Print-Agents → "Enrolment-Code erzeugen".
 
