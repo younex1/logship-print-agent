@@ -9,7 +9,7 @@
  *   version
  */
 import os from 'node:os'
-import { Api } from './api.ts'
+import { Api, ApiError } from './api.ts'
 import { VERSION, loadConfig, isEnrolled, writeEnvFile } from './config.ts'
 import { listQueues, queueDepth } from './cups.ts'
 import { restoreCupsBackup, uploadCupsBackup } from './backup.ts'
@@ -69,4 +69,8 @@ const main = async () => {
   }
 }
 
-main().catch((e) => { log.error(e); process.exit(1) })
+main().catch((e) => {
+  // API refusals (wrong/used code, revoked token) are user errors: one line, no stack trace
+  if (e instanceof ApiError) { console.error(`error: ${e.status} ${e.body?.message || e.body?.statusMessage || e.message}`); process.exit(1) }
+  log.error(e); process.exit(1)
+})
