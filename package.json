@@ -1,6 +1,6 @@
 {
   "name": "logship-print-agent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "LogShip Print Agent — prints LogShip ERP jobs on CUPS printers inside a tenant LAN (outbound-only, no VPN)",
   "type": "module",
   "private": true,
