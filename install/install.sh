@@ -15,8 +15,9 @@
 # Options: --url <https://instance> --code <LSPA-…> [--name "<device name>"] [--build] [--no-enroll] [--version x.y.z]
 # =====================================================================================
 set -euo pipefail
+export LC_ALL=C.UTF-8 LANG=C.UTF-8
 
-URL=""; CODE=""; NAME=""; BUILD=0; NOENROLL=0; VERSION=""; INTERACTIVE=""
+URL=""; CODE=""; NAME=""; BUILD=0; NOENROLL=0; PKG_VERSION_OPT=""; INTERACTIVE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --url) URL="${2%/}"; shift 2 ;;
@@ -24,7 +25,7 @@ while [ $# -gt 0 ]; do
     --name) NAME="$2"; shift 2 ;;
     --build) BUILD=1; shift ;;
     --no-enroll) NOENROLL=1; shift ;;
-    --version) VERSION="$2"; shift 2 ;;
+    --version) PKG_VERSION_OPT="$2"; shift 2 ;;
     --interactive) INTERACTIVE=1; shift ;;
     --non-interactive) INTERACTIVE=0; shift ;;
     -h|--help) sed -n 2,16p "$0"; exit 0 ;;
@@ -67,15 +68,16 @@ if [ "$INTERACTIVE" = 1 ] && [ "$NOENROLL" = 0 ] && [ -z "$CODE" ]; then
 fi
 
 step "Checking the system"
-. /etc/os-release
-case "${ID:-}" in
-  debian) [ "${VERSION_ID:-0}" -ge 12 ] 2>/dev/null || warn "Debian ${VERSION_ID:-?}: tested on 12 and 13" ;;
-  ubuntu) warn "Ubuntu ${VERSION_ID:-?}: should work (systemd + CUPS 2.4), not part of the test matrix" ;;
-  *) warn "${PRETTY_NAME:-unknown OS}: untested" ;;
+# read os-release in a subshell: it defines VERSION/NAME and would clobber our variables
+OS_ID="$(. /etc/os-release; echo "${ID:-}")"; OS_VER="$(. /etc/os-release; echo "${VERSION_ID:-0}")"; OS_PRETTY="$(. /etc/os-release; echo "${PRETTY_NAME:-unknown OS}")"
+case "$OS_ID" in
+  debian) [ "${OS_VER%%.*}" -ge 12 ] 2>/dev/null || warn "Debian ${OS_VER}: tested on 12 and 13" ;;
+  ubuntu) warn "Ubuntu ${OS_VER}: should work (systemd + CUPS 2.4), not part of the test matrix" ;;
+  *) warn "${OS_PRETTY}: untested" ;;
 esac
 case "$ARCH" in amd64|arm64) ok "architecture $ARCH" ;; *) fail "unsupported architecture $ARCH (amd64 or arm64)" ;; esac
 command -v systemctl >/dev/null || fail "systemd is required"
-ok "$PRETTY_NAME"
+ok "$OS_PRETTY"
 
 step "Base packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -84,7 +86,8 @@ apt-get install -y -qq curl ca-certificates xz-utils gnupg >/dev/null
 ok "curl / ca-certificates / xz-utils"
 
 step "Agent package"
-PKG_VERSION="${VERSION:-$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)}"
+PKG_VERSION="${PKG_VERSION_OPT:-$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)}"
+[ -n "$PKG_VERSION" ] || fail "could not determine the package version (package.json)"
 DEB="$REPO/install/logship-print-agent_${PKG_VERSION}_${ARCH}.deb"
 if [ "$BUILD" = 1 ] || [ ! -f "$DEB" ]; then
   [ "$BUILD" = 1 ] || warn "no prebuilt package for ${PKG_VERSION}/${ARCH} in install/ — building from source"
