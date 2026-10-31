@@ -1,4 +1,4 @@
-# nfpm package definition — see scripts/build.sh (env: ARCH, VERSION, NODE_BIN)
+# nfpm package definition — see scripts/build.sh (env: ARCH, VERSION; build/node = runtime of that arch)
 name: logship-print-agent
 arch: ${ARCH}
 platform: linux
@@ -28,7 +28,7 @@ contents:
   - src: dist/agent.mjs
     dst: /opt/logship-print-agent/agent.mjs
     file_info: { mode: 0755 }
-  - src: ${NODE_BIN}
+  - src: build/node
     dst: /opt/logship-print-agent/node
     file_info: { mode: 0755 }
   - src: packaging/bin/logship-print-agent

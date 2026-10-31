@@ -29,6 +29,7 @@ for ARCH in $ARCHES; do
   mkdir -p "build/$ARCH"
   tar -xJf "build/$TARBALL" -C "build/$ARCH" --strip-components=2 "node-v${NODE_VERSION}-linux-${NODE_ARCH}/bin/node"
   chmod 755 "build/$ARCH/node"
-  ARCH="$ARCH" VERSION="$VERSION" NODE_BIN="build/$ARCH/node" nfpm package -p deb -f packaging/nfpm.yaml -t dist/
+  cp "build/$ARCH/node" build/node   # nfpm.yaml references a fixed path (env expansion does not reach `src`)
+  ARCH="$ARCH" VERSION="$VERSION" nfpm package -p deb -f packaging/nfpm.yaml -t dist/
 done
 ls -la dist/*.deb
