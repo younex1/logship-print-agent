@@ -36,6 +36,9 @@ export interface AgentConfig {
   /** local CUPS admin (lpadmin group) the HTTP relay signs in with — created by the installer */
   cupsAdminUser: string
   cupsAdminPass: string
+  /** hard switches on the device itself (customer policy); LogShip has the same per-box toggles */
+  allowHttpRelay: boolean
+  allowSupportTunnel: boolean
 }
 
 export const parseEnvFile = (text: string): Record<string, string> => {
@@ -101,7 +104,9 @@ export const loadConfig = (): AgentConfig => {
     backupEnabled: bool(get('BACKUP_ENABLED'), true),
     supportUnit: get('SUPPORT_UNIT', 'logship-print-support.service'),
     cupsAdminUser: get('CUPS_ADMIN_USER', ''),
-    cupsAdminPass: get('CUPS_ADMIN_PASS', '')
+    cupsAdminPass: get('CUPS_ADMIN_PASS', ''),
+    allowHttpRelay: bool(get('ALLOW_HTTP_RELAY'), true),
+    allowSupportTunnel: bool(get('ALLOW_SUPPORT_TUNNEL'), true)
   }
   for (const d of [cfg.stateDir, cfg.spoolDir]) { try { if (!existsSync(d)) mkdirSync(d, { recursive: true }) } catch { /* read-only dev run */ } }
   return cfg

@@ -197,6 +197,7 @@ export const handleCommand = async (cfg: AgentConfig, api: Api, c: AgentCommandM
         break
       }
       case 'support-tunnel-on': {
+        if (!cfg.allowSupportTunnel) throw new Error('support tunnel disabled on this device (ALLOW_SUPPORT_TUNNEL=0 in agent.env)')
         const r = await run('systemctl', ['start', cfg.supportUnit], 30_000)
         ok = r.code === 0
         if (ok) await run('systemd-run', ['--on-active=8h', '--collect', '--unit=logship-print-support-stop', 'systemctl', 'stop', cfg.supportUnit], 10_000)
@@ -247,6 +248,7 @@ export const handleCommand = async (cfg: AgentConfig, api: Api, c: AgentCommandM
         break
       }
       case 'http': {
+        if (!cfg.allowHttpRelay) throw new Error('CUPS web relay disabled on this device (ALLOW_HTTP_RELAY=0 in agent.env)')
         result = await relayHttp(cfg, c.payload)
         break
       }
