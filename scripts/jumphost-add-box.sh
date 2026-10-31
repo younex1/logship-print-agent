@@ -12,7 +12,7 @@ AK=/var/lib/$USER_NAME/.ssh/authorized_keys
 touch "$AK"; chmod 600 "$AK"; chown "$USER_NAME:$USER_NAME" "$AK"
 KEYBODY=$(echo "$PUBKEY" | awk '{print $1" "$2}')
 grep -qF "$KEYBODY" "$AK" && sed -i "\#$KEYBODY#d" "$AK"
-echo "restrict,port-forwarding,permitlisten=\"127.0.0.1:${PORT}\" ${PUBKEY}" >> "$AK"
+echo "restrict,port-forwarding,permitlisten=\"${PORT}\" ${PUBKEY}" >> "$AK"
 # sshd: the support user may do port forwarding only (no shell/pty), reverse ports stay on loopback
 if [ ! -f /etc/ssh/sshd_config.d/60-printsupport.conf ]; then
   cat > /etc/ssh/sshd_config.d/60-printsupport.conf <<CONF
