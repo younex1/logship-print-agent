@@ -38,5 +38,14 @@ npm ci && npm run typecheck && npm run build        # dist/agent.mjs
 VERSION=0.1.0 ./scripts/build.sh                    # dist/*.deb (amd64 + arm64, bundled Node; needs nfpm)
 ./scripts/publish-apt.sh stable                     # on the apt host (reprepro)
 ```
+Official builds run on the Jenkins controller (`jenkins`, 192.168.12.65, Debian 12, nfpm in
+`/usr/local/bin`, Node 22.22.3 via the jenkins user's nvm): checkout under
+`/var/lib/jenkins/builds/logship-print-agent`, then `VERSION=x.y.z ./scripts/build.sh` as user
+`jenkins` — or the `Jenkinsfile` once the job exists. Install on a box:
+`apt install ./logship-print-agent_x.y.z_amd64.deb` (keeps `/etc/logship-print-agent/*.env`).
+
+## Releases
+Tag `vX.Y.Z` (= `package.json` version); the two `.deb` files + `SHA256SUMS` are attached to the
+GitHub release of that tag (built on the controller). v0.1.0: first packaged release (2026-10-31).
 
 Docs: `docs/README.de.md` (tenant leaflet), `docs/HARDWARE.md`, `docs/SUPPORT.md`, `docs/PROTOCOL.md`.
