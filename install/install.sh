@@ -112,6 +112,9 @@ if [ "$BUILD" = 1 ] || [ ! -f "$DEB" ]; then
   NODE_VERSION="$NODE_VERSION" VERSION="$PKG_VERSION" ARCHES="$ARCH" bash scripts/build.sh 2>&1 | grep -E "created package|bundled" | sed 's/^/  /'
   DEB="$REPO/dist/logship-print-agent_${PKG_VERSION}_${ARCH}.deb"
   [ -f "$DEB" ] || fail "build produced no package"
+  # the checkout usually belongs to the login user — do not leave root-owned build output behind
+  OWNER="$(stat -c %u:%g "$REPO")"; chown -R "$OWNER" "$REPO/dist" "$REPO/build" "$REPO/node_modules" 2>/dev/null || true
+  rm -rf "$TMP"
   ok "built $DEB"
 else
   if [ -f install/SHA256SUMS ]; then
