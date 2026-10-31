@@ -2,6 +2,8 @@ node_modules/
 dist/
 build/
 *.deb
+# the installer ships the current release packages from install/
+!install/*.deb
 *.log
 .DS_Store
 # local test state

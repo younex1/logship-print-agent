@@ -16,7 +16,7 @@
 # =====================================================================================
 set -euo pipefail
 
-URL=""; CODE=""; NAME=""; BUILD=0; NOENROLL=0; VERSION=""
+URL=""; CODE=""; NAME=""; BUILD=0; NOENROLL=0; VERSION=""; INTERACTIVE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --url) URL="${2%/}"; shift 2 ;;
@@ -25,6 +25,8 @@ while [ $# -gt 0 ]; do
     --build) BUILD=1; shift ;;
     --no-enroll) NOENROLL=1; shift ;;
     --version) VERSION="$2"; shift 2 ;;
+    --interactive) INTERACTIVE=1; shift ;;
+    --non-interactive) INTERACTIVE=0; shift ;;
     -h|--help) sed -n 2,16p "$0"; exit 0 ;;
     *) echo "unknown option $1"; exit 2 ;;
   esac
@@ -37,6 +39,32 @@ ok()   { printf '  \033[32m✔\033[0m %s\n' "$*"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 fail() { printf '  \033[31m✘\033[0m %s\n' "$*"; exit 1; }
 step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
+ask()  { local prompt="$1" default="${2:-}" reply; if [ -n "$default" ]; then read -r -p "  $prompt [$default]: " reply; echo "${reply:-$default}"; else read -r -p "  $prompt: " reply; echo "$reply"; fi; }
+
+# ── wizard: ask for what is missing when a human is at the keyboard ─────────────────────────────
+[ -z "$INTERACTIVE" ] && { [ -t 0 ] && INTERACTIVE=1 || INTERACTIVE=0; }
+ALREADY_ENROLLED="$(sed -n 's/^LOGSHIP_AGENT_TOKEN=//p' /etc/logship-print-agent/agent.env 2>/dev/null | head -1)"
+if [ "$INTERACTIVE" = 1 ] && [ "$NOENROLL" = 0 ] && [ -z "$CODE" ]; then
+  step "LogShip Print Agent – Einrichtung / setup"
+  if [ -n "$ALREADY_ENROLLED" ]; then
+    echo "  Dieses Gerät ist bereits mit $(sed -n 's/^LOGSHIP_URL=//p' /etc/logship-print-agent/agent.env | head -1) verbunden."
+    re="$(ask 'Neu verbinden (anderes LogShip / neuer Code)? j/N' 'N')"
+    case "$re" in j|J|y|Y) ;; *) NOENROLL=1 ;; esac
+  fi
+  if [ "$NOENROLL" = 0 ]; then
+    echo "  Code und URL: LogShip → Einstellungen → Drucker → „Druckserver verbinden“ (Code 24 h gültig, einmalig)."
+    while :; do
+      URL="$(ask 'LogShip-Instanz URL (z. B. https://erp.firma.de)' "${URL:-}")"; URL="${URL%/}"
+      case "$URL" in https://*|http://*) ;; *) echo "    bitte mit https:// angeben"; continue ;; esac
+      if curl -fsS -o /dev/null --max-time 10 "$URL/signin"; then echo "    ✔ erreichbar"; break; else echo "    ✘ $URL antwortet nicht – Schreibweise/Netzwerk prüfen (Enter = trotzdem weiter)"; r="$(ask 'erneut eingeben? j/N' 'N')"; case "$r" in j|J|y|Y) continue ;; *) break ;; esac; fi
+    done
+    while :; do
+      CODE="$(ask 'Enrolment-Code (LSPA-XXXX-XXXX-XXXX)' "${CODE:-}")"; CODE="$(echo "$CODE" | tr '[:lower:]' '[:upper:]' | tr -d ' ')"
+      case "$CODE" in LSPA-????-????-????) break ;; "") echo "    (leer = jetzt nicht verbinden)"; NOENROLL=1; break ;; *) echo "    Format: LSPA-XXXX-XXXX-XXXX" ;; esac
+    done
+    [ "$NOENROLL" = 0 ] && NAME="$(ask 'Gerätename, wie er in LogShip erscheinen soll' "${NAME:-$(hostname)}")"
+  fi
+fi
 
 step "Checking the system"
 . /etc/os-release
@@ -100,9 +128,14 @@ if [ "$NOENROLL" = 1 ]; then
 elif [ -n "$CUR_TOKEN" ] && [ -z "$CODE" ]; then
   ok "already enrolled with $(sed -n 's/^LOGSHIP_URL=//p' "$ENV" | head -1) — keeping it (pass --code to re-enrol)"
 elif [ -n "$URL" ] && [ -n "$CODE" ]; then
-  logship-print-agent enroll --url "$URL" --code "$CODE" ${NAME:+--name "$NAME"} | sed 's/^/  /'
-  systemctl restart logship-print-agent
-  ok "enrolled"
+  if OUT="$(logship-print-agent enroll --url "$URL" --code "$CODE" ${NAME:+--name "$NAME"} 2>&1)"; then
+    echo "$OUT" | sed 's/^/  /'
+    systemctl restart logship-print-agent
+    ok "enrolled"
+  else
+    echo "$OUT" | tail -3 | sed 's/^/  /'
+    fail "enrolment refused — code wrong/used/expired? Create a new one in LogShip and run: sudo logship-print-agent enroll --url $URL --code LSPA-…"
+  fi
 else
   warn "not enrolled yet — run: sudo logship-print-agent enroll --url https://<instance> --code LSPA-…   (code from LogShip → Einstellungen → Drucker → Druckserver verbinden)"
   warn "or open the setup page http://$(hostname -I | awk '{print $1}'):8080"
