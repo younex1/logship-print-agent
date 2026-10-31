@@ -9,6 +9,9 @@ EnvironmentFile=/etc/logship-print-agent/support.env
 ExecStart=/usr/bin/autossh -M 0 -N -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new -i ${SUPPORT_KEY} -p ${SUPPORT_PORT} -R ${REMOTE_PORT}:localhost:22 ${SUPPORT_USER}@${SUPPORT_HOST}
 Restart=on-failure
 RestartSec=10
+# `systemctl stop` ends autossh/ssh with a non-zero code — count that as a clean stop
+SuccessExitStatus=0 1 143 255
+KillSignal=SIGTERM
 
 [Install]
 # not enabled: only started by the agent's 'support-tunnel-on' command (auto-stop after 8 h)

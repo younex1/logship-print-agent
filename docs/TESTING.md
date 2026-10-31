@@ -10,20 +10,25 @@
 | Status page of the box | `http://192.168.9.136:8080` (from the office LAN) |
 
 ## 1. In LogShip (browser)
-1. Log in to the demo, open **Einstellungen → Drucker**. The card **Print-Agents** at the top shows the
-   box: green dot (online), version, host, queues with label size, job counters.
-2. Click **Drucker einrichten** on the agent → **USB- & Netzwerkdrucker suchen** (runs `lpinfo` on the
-   box, ~5 s) → pick a device or type a URI (`socket://<ip>:9100` for Zebras, `ipp://…` for A4 lasers)
-   → driver preset → **Auf dem Gerät anlegen**. The new queue appears in the list within seconds.
-   Buttons per queue: Testseite, Etikettengröße setzen, Anhalten/Aktivieren, Aufträge abbrechen, Entfernen.
-3. Click **Anlegen** next to a discovered queue (or open an existing printer) → in the printer form
-   choose the agent under **Print-Agent** and the device queue; save. The list column **Print-Agent**
-   now shows the box instead of "lokal".
-4. Print as usual: commissioning label, product label, picklist, delivery note. A toast
-   "An Drucker gesendet" appears when CUPS on the box accepted the job; bulk jobs show one progress
-   toast. **Druckaufträge** (button on the card) lists every job with status, lp output, retry/cancel.
-5. Unplug the box's LAN cable, print, plug it back in: the job waits as `queued` and prints on reconnect.
-6. **Enrolment-Code erzeugen** → the code + instance URL you would hand to a tenant.
+Page **Einstellungen → Drucker** (`/settings/printers`): hero with the numbers, then three tabs.
+1. Tab **Druckserver** (`?tab=servers`): one card per box — status dot, organisation, version, health,
+   KPIs (queues / bound printers / open jobs / in CUPS / failed), queues with their LogShip printer and
+   binding state, the **Fernzugriff** switches (CUPS web UI via LogShip, support tunnel) and the actions.
+2. **Drucker einrichten** on a card → **USB- & Netzwerkdrucker suchen** (`lpinfo` on the box, ~5 s) → pick a
+   device or type a URI (`socket://<ip>:9100` for Zebras, `ipp://…` for A4 lasers) → driver preset → media →
+   **Auf dem Gerät anlegen**. The queue appears in the card within seconds. Per queue: Testseite,
+   Etikettengröße, Anhalten/Aktivieren, Aufträge abbrechen, Entfernen.
+3. **CUPS-Oberfläche** on a card → the box's CUPS admin UI opens in a modal inside LogShip (relayed
+   through the agent; disabled when the customer switched it off or the box is offline).
+4. **Anlegen** next to a queue without a LogShip printer (or open an existing printer in tab **Drucker**)
+   → in the printer form choose the box under **Print-Agent** and the device queue; save. Column
+   **Druckt über** in the grid shows the assignment.
+5. Print as usual: commissioning label, product label, picklist, delivery note. A toast "An Drucker
+   gesendet" appears when CUPS on the box accepted the job; bulk jobs show one progress toast.
+   Tab **Druckaufträge** lists every job with status, lp output, retry/cancel (auto-refresh 10 s).
+6. Unplug the box's LAN cable, print, plug it back in: the job waits as `queued` and prints on reconnect.
+7. Toolbar **Druckserver verbinden** → device name + organisation → code + instance URL for a tenant box.
+8. **Fernwartung 8 h** on a card opens the reverse-SSH tunnel (see SUPPORT.md for the jump-host side).
 
 ## 2. On the box (ssh)
 ```bash
